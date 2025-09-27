@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+  <title>PWC EXPRESS — Marrakech Matrix Pad</title>
+  <style>
+    :root{
+      /* Marrakech palette */
+      --saffron:#ffb347;     /* safran */
+      --terracotta:#c05a15;  /* terre cuite */
+      --date:#8a3b12;        /* datte */
+      --night:#0b0a0f;       /* nuit */
+      --sand:#f7efe5;        /* sable clair (texte) */
+      --ok:#16a34a;          /* vert succès */
+      --err:#ef4444;         /* rouge erreur */
+    }
+
+    html,body{ height:100%; width:100%; }
+    body{
+      margin:0; color:var(--sand); font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+      min-height:100svh; min-height:100dvh; overflow:hidden;
+      background:radial-gradient(1200px 800px at 85% -10%, rgba(255,179,71,.18), transparent 60%), linear-gradient(180deg, #0e0b10 0%, #26120a 100%);
+      -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
+    }
+
+    /* Canvas matrix background */
+    #matrix{ position:fixed; inset:0; z-index:-5; display:block; width:100vw; height:100vh; }
+
+    /* Hooded figure (SVG) centered behind keypad */
+    .hood-wrap{ position:fixed; inset:0; display:grid; place-items:center; z-index:-1; pointer-events:none; }
+    .hood-wrap::before{ content:""; position:absolute; width:min(85vmin, 780px); height:min(85vmin, 780px); border-radius:50%;
+      background: radial-gradient(closest-side, rgba(0,0,0,.15) 0%, rgba(0,0,0,.35) 55%, rgba(0,0,0,0) 72%);
+      backdrop-filter: blur(2px) brightness(.85); filter: saturate(1.05) contrast(1.05); }
+    .hood-wrap::after{ content:""; position:absolute; width:min(62vmin, 560px); height:min(62vmin, 560px); border-radius:50%;
+      background: radial-gradient(circle at 50% 40%, rgba(255,179,71,.30), rgba(192,90,21,.10) 60%, rgba(0,0,0,0) 70%);
+      mix-blend-mode: screen; }
+    .hood{ width:min(70vmin, 640px); height:auto; opacity:.96; filter: drop-shadow(0 22px 50px rgba(0,0,0,.65)) saturate(1.15) contrast(1.2); }
+
+    /* Layout */
+    .stage{ position:relative; display:grid; place-items:center; width:100vw; height:100svh; height:100dvh; padding: clamp(8px, 2.5vmin, 24px); box-sizing:border-box; }
+    .panel{ display:grid; justify-items:center; align-content:center; gap: clamp(10px, 2.5vmin, 20px); max-width: min(94vw, 720px); width:100%; }
+
+    h1{ margin:0; text-transform:uppercase; font-weight:900; letter-spacing:.08em; text-align:center; font-size: clamp(24px, 6.5vw, 54px); text-shadow:0 2px 18px rgba(0,0,0,.55); }
+    .subtitle{ font-size: clamp(14px, 3.5vw, 18px); opacity:.95; text-shadow:0 2px 12px rgba(0,0,0,.5); }
+
+    .display{ font: 700 clamp(18px,4.5vw,26px) ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      letter-spacing:.25em; padding:10px 14px; border-radius:14px; min-width:min(70vw,360px); text-align:center;
+      background:rgba(0,0,0,.45); border:1px solid rgba(255,255,255,.16); backdrop-filter: blur(2px); }
+
+    /* Bottom status (outside keypad) */
+    .status-bottom{ position:fixed; left:50%; transform:translateX(-50%); bottom:clamp(12px, 3.5vmin, 28px); z-index:10; pointer-events:none;
+      font-weight:900; text-align:center; text-shadow:0 2px 14px rgba(0,0,0,.6); font-size: clamp(18px, 5.5vw, 28px); }
+    .status-bottom.ok{ color:var(--ok); }
+    .status-bottom.err{ color:var(--err); }
+
+    /* Keypad 3x3 */
+    .pad-wrap{ position:relative; width:min(90vmin, 560px); aspect-ratio: 1 / 1; display:grid; place-items:center; }
+    .pad{ display:grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr); gap: clamp(10px, 2.5vmin, 18px);
+          width:100%; height:100%; padding: clamp(8px, 2.2vmin, 16px); box-sizing:border-box; }
+    .digit{ display:grid; place-items:center; border-radius:16px; user-select:none; cursor:pointer; border:1px solid rgba(255,255,255,.25);
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.14), rgba(255,255,255,.06)),
+        linear-gradient(145deg, rgba(255,179,71,.25), rgba(192,90,21,.16));
+      box-shadow: 0 10px 26px rgba(0,0,0,.38), inset 0 1px 0 rgba(255,255,255,.25);
+      color:#fff; font-weight:900; font-size: clamp(22px, 6.5vmin, 40px); transition: transform .08s ease, filter .2s ease; }
+    .digit:active{ transform: translateY(2px) scale(.98); }
+
+    .actions{ display:flex; gap:12px; flex-wrap:wrap; justify-content:center; }
+    .btn{ font-size: clamp(13px, 3.5vw, 16px); padding:10px 14px; border-radius:12px; color:#fff; cursor:pointer;
+          background: rgba(0,0,0,.35); border:1px solid rgba(255,255,255,.22); box-shadow:0 6px 18px rgba(0,0,0,.4); }
+    .btn[hidden]{ display:none; }
+  </style>
+</head>
+<body>
+  <canvas id="matrix"></canvas>
+  <div class="hood-wrap" aria-hidden="true">
+    <!-- Generic hooded silhouette (no external IP) -->
+    <svg class="hood" viewBox="0 0 300 360" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Silhouette encapuchonnée">
+      <defs>
+        <linearGradient id="cape" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#c05a15"/>
+          <stop offset="100%" stop-color="#4a1e0d"/>
+        </linearGradient>
+      </defs>
+      <path d="M150 10C100 25 74 70 60 115c-8 24-14 49-16 75 22-18 46-28 69-32 8-1 17-2 25-2s17 1 25 2c23 4 47 14 69 32-2-26-8-51-16-75-14-45-40-90-86-105Z" fill="url(#cape)" opacity="0.95"/>
+      <path d="M150 10C100 25 74 70 60 115c-8 24-14 49-16 75 22-18 46-28 69-32 8-1 17-2 25-2s17 1 25 2c23 4 47 14 69 32-2-26-8-51-16-75-14-45-40-90-86-105Z" fill="none" stroke="#ffd18a" stroke-opacity=".28" stroke-width="1.6"/>
+      <path d="M95 170c0 40 22 65 55 65s55-25 55-65c-12-6-38-11-55-11s-43 5-55 11Z" fill="#1a0d07" stroke="#000" stroke-opacity=".25"/>
+      <path d="M150 40c-36 10-55 55-58 110 18-8 40-12 58-12s40 4 58 12c-3-55-22-100-58-110Z" fill="#2a1208" opacity=".95" stroke="#ffa756" stroke-opacity=".18"/>
+    </svg>
+  </div>
+
+  <main class="stage">
+    <section class="panel" role="application" aria-label="PWC Express — saisie du code">
+      <h1>PWC EXPRESS</h1>
+      <div class="subtitle">Insérer le code secret</div>
+      <div id="digitsDisplay" class="display" aria-live="polite">• • •</div>
+
+      <div class="pad-wrap">
+        <div id="pad" class="pad" aria-label="Clavier 1 à 9"><!-- digits injected by JS --></div>
+      </div>
+
+      <div class="actions">
+        <button id="clear" class="btn">Effacer</button>
+        <button id="retry" class="btn" hidden>Réessayer</button>
+      </div>
+    </section>
+  </main>
+
+  <div id="statusBottom" class="status-bottom" aria-live="polite"></div>
+
+  <script>
+  (function(){
+    'use strict';
+
+    const CORRECT = '980';
+
+    // ---------- DOM ----------
+    const $ = (s)=>document.querySelector(s);
+    const canvas = $('#matrix');
+    const pad = $('#pad');
+    const display = $('#digitsDisplay');
+    const statusBottom = $('#statusBottom');
+    const clearBtn = $('#clear');
+    const retryBtn = $('#retry');
+
+    let input = '';
+    let locked = false;
+
+    // ---------- Build keypad 1..9 ----------
+    function buildPad(){
+      if(pad.children.length) return;
+      for(let i=1;i<=9;i++){
+        const b=document.createElement('button');
+        b.type='button'; b.className='digit'; b.textContent=String(i);
+        b.setAttribute('aria-label', `Chiffre ${i}`);
+        pad.appendChild(b);
+      }
+    }
+
+    // ---------- UI helpers ----------
+    function render(){ display.textContent = input.padEnd(3,'•').split('').join(' '); }
+    function setStatus(msg, ok){
+      statusBottom.textContent = msg || '';
+      statusBottom.className = 'status-bottom ' + (msg ? (ok ? 'ok' : 'err') : '');
+    }
+    function reset(){ input=''; locked=false; render(); setStatus(''); retryBtn.hidden = true; }
+    function isCodeCorrect(code){ return code === CORRECT; }
+
+    function check(){
+      if(input.length < 3) return;
+      if(isCodeCorrect(input)){
+        locked = true; setStatus('CORRECT', true);
+      } else {
+        setStatus('ERREUR', false);
+        retryBtn.hidden = false;
+      }
+    }
+
+    // ---- Audio beep on digit click (safe) ----
+    const AC = window.AudioContext || window.webkitAudioContext;
+    let ac = null, master = null;
+    function ensureAudio(){
+      try{
+        if(!AC) return false;
+        if(!ac){ ac = new AC(); master = ac.createGain(); master.gain.value = 0.28; master.connect(ac.destination); }
+        if(ac.state === 'suspended') ac.resume();
+        return true;
+      }catch(_){ return false; }
+    }
+    function beep(){
+      if(!ensureAudio()) return;
+      try{
+        const o = ac.createOscillator();
+        const g = ac.createGain();
+        o.type = 'triangle'; o.frequency.value = 720;
+        o.connect(g); g.connect(master);
+        const now = ac.currentTime;
+        g.gain.setValueAtTime(0.0001, now);
+        g.gain.exponentialRampToValueAtTime(0.22, now+0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, now+0.10);
+        o.start(now); o.stop(now+0.11);
+      }catch(_){ /* ignore */ }
+    }
+
+    // ---------- Events ----------
+    pad.addEventListener('click', (e)=>{
+      const btn = e.target.closest('.digit');
+      if(!btn || locked) return;
+      beep();
+      if(input.length < 3){ input += btn.textContent.trim(); render(); if(input.length===3) check(); }
+    });
+    clearBtn.addEventListener('click', reset);
+    retryBtn.addEventListener('click', reset);
+
+    // ---------- Matrix background ----------
+    const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789مرحباسلام';
+    const palette = ['#ffb347','#f59e0b','#c05a15','#b45309','#8a3b12'];
+    const ctx = canvas.getContext('2d');
+    let w=0,h=0,colWidth=16, cols=0, drops=[], speed=0.35; // slower matrix
+
+    function resize(){
+      const dpr = Math.max(1, window.devicePixelRatio||1);
+      w = canvas.width = Math.floor(window.innerWidth * dpr);
+      h = canvas.height = Math.floor((window.innerHeight) * dpr);
+      canvas.style.width = '100vw'; canvas.style.height = '100vh';
+      ctx.setTransform(dpr,0,0,dpr,0,0);
+      cols = Math.ceil(window.innerWidth / colWidth);
+      drops = new Array(cols).fill(0).map(()=> Math.floor(Math.random()* -40));
+    }
+
+    function draw(){
+      // fade trail
+      ctx.fillStyle = 'rgba(0,0,0,0.10)';
+      ctx.fillRect(0,0,window.innerWidth,window.innerHeight);
+      ctx.font = '16px monospace';
+
+      for(let i=0;i<cols;i++){
+        const x = i*colWidth + 4;
+        const y = drops[i]*16;
+        const ch = letters.charAt(Math.floor(Math.random()*letters.length));
+        ctx.fillStyle = palette[Math.floor(Math.random()*palette.length)];
+        ctx.fillText(ch, x, y);
+        if(y > window.innerHeight && Math.random() > 0.975) drops[i] = 0;
+        drops[i] += speed;
+      }
+      requestAnimationFrame(draw);
+    }
+
+    // ---------- Init ----------
+    buildPad();
+    render();
+    resize();
+    window.addEventListener('resize', resize);
+    requestAnimationFrame(draw);
+
+    // ---------- Tests (console) ----------
+    (function(){
+      const cases = [ ['980', true], ['000', false], ['9800', false], ['98', false], ['', false], [' 980', false], ['098', false], ['98 ', false] ];
+      cases.forEach(([c, expected])=> console.assert(isCodeCorrect(c)===expected, `isCodeCorrect('${c}') -> ${isCodeCorrect(c)}, expected ${expected}`));
+      console.assert(document.querySelectorAll('.digit').length === 9, 'Keypad should have 9 digits');
+      console.assert(document.getElementById('statusBottom'), 'Bottom status exists');
+    })();
+  })();
+  </script>
+</body>
+</html>
